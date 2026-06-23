@@ -1,0 +1,93 @@
+-- | Core shared types for the Lex Private Credit Marketplace.
+-- All templates import from here; nothing here imports from our other modules.
+module Lex.Types where
+
+import DA.Date (Date)
+
+-- ---------------------------------------------------------------------------
+-- Domain Enumerations
+-- ---------------------------------------------------------------------------
+
+data Currency
+  = USD
+  | EUR
+  | GBP
+  | CHF
+  | SGD
+  deriving (Eq, Show, Enum, Bounded)
+
+-- | How principal and interest are structured over the loan term.
+data RepaymentType
+  = Bullet     -- ^ Full principal + interest at maturity
+  | Monthly    -- ^ Equal monthly instalments (amortising)
+  | Quarterly  -- ^ Equal quarterly instalments (amortising)
+  deriving (Eq, Show)
+
+-- ---------------------------------------------------------------------------
+-- Data Records
+-- ---------------------------------------------------------------------------
+
+-- | One row in the repayment waterfall.
+data RepaymentEntry = RepaymentEntry
+  with
+    dueDate    : Date
+    principal  : Decimal  -- ^ Principal portion of payment
+    interest   : Decimal  -- ^ Interest portion of payment
+    totalDue   : Decimal
+    paidAmount : Decimal
+    isPaid     : Bool
+  deriving (Eq, Show)
+
+-- | Immutable terms that define a loan request.
+data LoanTerms = LoanTerms
+  with
+    principal       : Decimal       -- ^ Requested principal
+    currency        : Currency
+    interestRateBps : Int           -- ^ Annual rate in bps (450 = 4.50 %)
+    termMonths      : Int           -- ^ Duration in calendar months
+    repaymentType   : RepaymentType
+    covenants       : [Text]        -- ^ Legal / financial covenants (free-form)
+  deriving (Eq, Show)
+
+-- | Terms a lender embeds in their offer.
+data OfferTerms = OfferTerms
+  with
+    offeredPrincipal : Decimal
+    currency         : Currency
+    offeredRateBps   : Int     -- ^ Offered annual rate in bps
+    conditions       : [Text]  -- ^ Lender-specific conditions
+    validUntilDate   : Date    -- ^ Offer expiry
+  deriving (Eq, Show)
+
+-- ---------------------------------------------------------------------------
+-- Pure Helpers
+-- ---------------------------------------------------------------------------
+
+bpsToRate : Int -> Decimal
+bpsToRate bps = intToDecimal bps / 10000.0
+
+showCurrency : Currency -> Text
+showCurrency USD = "USD"
+showCurrency EUR = "EUR"
+showCurrency GBP = "GBP"
+showCurrency CHF = "CHF"
+showCurrency SGD = "SGD"
+
+-- | Simple annual interest for a given number of months.
+simpleInterest : Decimal -> Int -> Int -> Decimal
+simpleInterest principal rateBps months =
+  principal * bpsToRate rateBps * (intToDecimal months / 12.0)
+
+-- | Periodic payment (PMT) for an amortising loan.
+periodicPayment : Decimal -> Int -> Int -> Int -> Decimal
+periodicPayment principal rateBps termMonths periodsPerYear =
+  let periods    = termMonths * periodsPerYear / 12
+      periodRate = bpsToRate rateBps / intToDecimal periodsPerYear
+  in if periodRate == 0.0
+     then principal / intToDecimal periods
+     else principal * periodRate * (1.0 + periodRate) ^ periods
+            / ((1.0 + periodRate) ^ periods - 1.0)
+
+-- | Approximate: 30 days per month, good enough for demo schedules.
+approxDaysInMonths : Int -> Int
+approxDaysInMonths months = months * 30

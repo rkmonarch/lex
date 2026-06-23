@@ -1,0 +1,91 @@
+-- | Confidential loan offers from lenders.
+--
+-- PRIVACY — the crown jewel of Lex:
+--   signatory  : lender  (lender creates + authorises the offer)
+--   observer   : borrower ONLY
+--
+-- Lender2 submitting to the same proposal cannot see Lender1's rate.
+-- The borrower holds information asymmetry — exactly like a real competitive
+-- tender process.  Canton enforces this cryptographically.
+module Lex.LoanOffer where
+
+import Lex.Types
+import DA.Date (Date)
+
+-- ---------------------------------------------------------------------------
+-- Loan Offer
+-- ---------------------------------------------------------------------------
+
+template LoanOffer
+  with
+    lender          : Party
+    borrower        : Party   -- ^ The only counterparty who can see this offer
+    operator        : Party
+    proposalRef     : Text    -- ^ Matches LoanProposal.proposalRef
+    terms           : OfferTerms
+    specialConditions : [Text]
+    submittedAt     : Date
+    status          : Text    -- ^ "PENDING" | "ACCEPTED" | "REJECTED" | "WITHDRAWN"
+  where
+    signatory lender
+    -- KEY PRIVACY RULE: borrower is the ONLY observer.
+    -- No other lender can see this contract on the Canton ledger.
+    observer borrower
+
+    ensure
+      terms.offeredPrincipal > 0.0 &&
+      terms.offeredRateBps >= 0 &&
+      terms.offeredPrincipal > 0.0
+
+    -- | Lender withdraws before borrower decides.
+    choice WithdrawOffer : ()
+      controller lender
+      do
+        assertMsg "Can only withdraw pending offers" (status == "PENDING")
+        return ()
+
+    -- | Borrower explicitly rejects this offer.
+    choice RejectOffer : ()
+      controller borrower
+      do
+        assertMsg "Can only reject pending offers" (status == "PENDING")
+        return ()
+
+    -- | Consuming choice exercised BY THE BORROWER during settlement.
+    -- Because lender is signatory and borrower is the controller here,
+    -- exercising this choice in a transaction grants JOINT authority
+    -- (borrower + lender) — sufficient to create multi-signatory contracts
+    -- such as ActiveLoan and CollateralLock.
+    --
+    -- This is the atomic settlement primitive.
+    choice SettleOffer : SettledOfferData
+      controller borrower
+      do
+        assertMsg "Can only settle pending offers" (status == "PENDING")
+        return SettledOfferData with
+          lender          = lender
+          borrower        = borrower
+          operator        = operator
+          proposalRef     = proposalRef
+          terms           = terms
+          specialConditions = specialConditions
+
+    -- | Operator can expire stale offers for housekeeping.
+    choice ExpireOffer : ()
+      controller operator
+      do
+        return ()
+
+-- ---------------------------------------------------------------------------
+-- Return value from SettleOffer (passed back to LoanProposal.AcceptOffer)
+-- ---------------------------------------------------------------------------
+
+data SettledOfferData = SettledOfferData
+  with
+    lender           : Party
+    borrower         : Party
+    operator         : Party
+    proposalRef      : Text
+    terms            : OfferTerms
+    specialConditions: [Text]
+  deriving (Show)

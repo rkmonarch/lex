@@ -1,0 +1,116 @@
+-- | Tokenised collateral locking for Lex loans.
+-- In production this would extend Daml Finance's Holding / Transfer interfaces.
+-- Here we model it as a lightweight lock record with lifecycle choices.
+--
+-- PRIVACY: both borrower AND lender must sign — neither can unilaterally release.
+-- Operator is an observer for regulatory reporting.
+module Lex.Collateral where
+
+import Lex.Types
+import DA.Date (Date)
+
+-- ---------------------------------------------------------------------------
+-- Collateral Lock
+-- ---------------------------------------------------------------------------
+
+template CollateralLock
+  with
+    borrower           : Party
+    lender             : Party
+    operator           : Party
+    assetDescription   : Text    -- ^ e.g. "Senior secured notes — ISIN XS1234"
+    assetValue         : Decimal -- ^ Agreed valuation at origination
+    currency           : Currency
+    lockedAt           : Date
+    maturityDate       : Date
+    loanRef            : Text    -- ^ Human-readable loan reference
+    status             : Text    -- ^ "LOCKED" | "RELEASED" | "LIQUIDATED"
+  where
+    -- Both borrower and lender sign → neither can act unilaterally after lock-in.
+    signatory borrower, lender
+    observer operator
+
+    ensure assetValue > 0.0
+
+    -- | Lender releases collateral after the loan is fully repaid.
+    choice ReleaseCollateral : ()
+      controller lender
+      do
+        assertMsg "Can only release locked collateral" (status == "LOCKED")
+        -- Archive produces the end-state implicitly; no successor contract needed.
+        return ()
+
+    -- | Lender liquidates collateral on confirmed default.
+    choice LiquidateCollateral : ContractId CollateralLiquidationRecord
+      with
+        reason         : Text
+        liquidationDate: Date
+      controller lender
+      do
+        assertMsg "Can only liquidate locked collateral" (status == "LOCKED")
+        create CollateralLiquidationRecord with
+          borrower
+          lender
+          operator
+          assetDescription
+          assetValue
+          currency
+          loanRef
+          reason
+          liquidationDate
+
+    -- | Borrower can request release (lender must countersign via a separate workflow).
+    nonconsuming choice RequestRelease : ContractId CollateralReleaseRequest
+      with
+        requestNote : Text
+      controller borrower
+      do
+        assertMsg "Can only request release on locked collateral" (status == "LOCKED")
+        create CollateralReleaseRequest with
+          borrower
+          lender
+          operator
+          loanRef
+          requestNote
+
+-- ---------------------------------------------------------------------------
+-- Supporting audit trail contracts
+-- ---------------------------------------------------------------------------
+
+-- | Immutable audit record created when collateral is liquidated.
+template CollateralLiquidationRecord
+  with
+    borrower        : Party
+    lender          : Party
+    operator        : Party
+    assetDescription: Text
+    assetValue      : Decimal
+    currency        : Currency
+    loanRef         : Text
+    reason          : Text
+    liquidationDate : Date
+  where
+    signatory lender
+    observer borrower, operator
+
+-- | Borrower's request for collateral release — lender must accept.
+template CollateralReleaseRequest
+  with
+    borrower   : Party
+    lender     : Party
+    operator   : Party
+    loanRef    : Text
+    requestNote: Text
+  where
+    signatory borrower
+    observer lender, operator
+
+    choice ApproveRelease : ()
+      controller lender
+      do
+        return ()  -- Caller archives the CollateralLock separately
+
+    choice DenyRelease : ()
+      controller lender
+      do
+        return ()

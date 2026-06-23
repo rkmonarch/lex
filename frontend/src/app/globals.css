@@ -1,0 +1,254 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design tokens — Polymarket-inspired: light-first, near-zero chrome ── */
+:root {
+  --bg:            #ffffff;
+  --bg-secondary:  #f9fafb;
+  --surface:       #ffffff;
+  --border:        #e5e7eb;
+  --border-strong: #d1d5db;
+  --text:          #0a0a0a;
+  --text-muted:    #6b7280;
+  --text-faint:    #9ca3af;
+  --primary:       #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-subtle:#eff6ff;
+  --accent:        #0d9488;
+  --success:       #059669;
+  --success-subtle:#ecfdf5;
+  --warning:       #d97706;
+  --warning-subtle:#fffbeb;
+  --danger:        #dc2626;
+  --danger-subtle: #fef2f2;
+  --black:         #000000;
+  --radius:        0.5rem;
+}
+
+.dark {
+  --bg:            #09090b;
+  --bg-secondary:  #111115;
+  --surface:       #111115;
+  --border:        #1f2128;
+  --border-strong: #2d3041;
+  --text:          #fafafa;
+  --text-muted:    #71717a;
+  --text-faint:    #3f3f46;
+  --primary:       #6366f1;
+  --primary-hover: #4f46e5;
+  --primary-subtle:#1e1b4b;
+  --accent:        #14b8a6;
+  --success:       #10b981;
+  --success-subtle:#022c22;
+  --warning:       #f59e0b;
+  --warning-subtle:#1c1408;
+  --danger:        #ef4444;
+  --danger-subtle: #1c0a0a;
+  --black:         #fafafa;
+}
+
+/* ── Base ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+
+/* ── Typography ────────────────────────────────────────────────────────── */
+.font-mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+
+.display-heading {
+  font-size: clamp(2rem, 5vw, 3.75rem);
+  font-weight: 400;  /* Polymarket uses regular/medium weight, not bold */
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.section-heading {
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  font-weight: 400;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+
+/* ── Grid background — very subtle, barely visible ─────────────────────── */
+.grid-bg {
+  background-image:
+    linear-gradient(to right, rgba(0,0,0,0.035) 1px, transparent 1px);
+  background-size: 16.666% 100%;
+}
+.dark .grid-bg {
+  background-image:
+    linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px);
+}
+
+/* ── Card variants ─────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* Polymarket corner-bracket card decoration */
+.card-bracket {
+  position: relative;
+}
+.card-bracket::before,
+.card-bracket::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-color: var(--text-faint);
+  border-style: solid;
+  pointer-events: none;
+  z-index: 10;
+}
+.card-bracket::before {
+  top: -1px; left: -1px;
+  border-width: 2px 0 0 2px;
+}
+.card-bracket::after {
+  bottom: -1px; right: -1px;
+  border-width: 0 2px 2px 0;
+}
+
+.card-hover {
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  cursor: pointer;
+}
+.card-hover:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+  transform: translateY(-1px);
+}
+.dark .card-hover:hover {
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+}
+
+/* ── Tables ────────────────────────────────────────────────────────────── */
+.lex-table { width: 100%; border-collapse: collapse; }
+.lex-table th {
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0.625rem 1rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.lex-table td {
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+  color: var(--text);
+}
+.lex-table tr:last-child td { border-bottom: none; }
+.lex-table tbody tr { transition: background 0.1s; }
+.lex-table tbody tr:hover { background: var(--bg-secondary); }
+
+/* ── Divider accordion (Polymarket FAQ style) ──────────────────────────── */
+.divider-row {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+.divider-row:hover { background: var(--bg-secondary); }
+
+/* ── Skeleton ──────────────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-secondary) 25%,
+    var(--border) 50%,
+    var(--bg-secondary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: 4px;
+}
+
+/* ── Privacy blur (demo mode) ──────────────────────────────────────────── */
+.privacy-redacted {
+  filter: blur(5px) grayscale(0.3);
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.4;
+  transition: filter 0.3s, opacity 0.3s;
+}
+.privacy-visible { animation: fadeUp 0.25s ease-out; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Scroll carousel — sticky-left + floating-right ───────────────────── */
+.scroll-sticky-left {
+  position: sticky;
+  top: 8rem;
+  align-self: flex-start;
+}
+
+/* ── Noise texture overlay (subtle, Polymarket-style) ──────────────────── */
+.noise-overlay::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.025'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.4;
+}
+
+/* ── Button base ───────────────────────────────────────────────────────── */
+.btn-black {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  background: var(--black);
+  color: var(--bg);
+  border: 1px solid var(--black);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-black:hover { opacity: 0.85; }
+
+.btn-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-outline:hover { background: var(--bg-secondary); }

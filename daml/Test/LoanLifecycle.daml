@@ -1,0 +1,266 @@
+-- | End-to-end lifecycle tests for the Lex Private Credit Marketplace.
+-- Run with: daml test --files daml/Test/LoanLifecycle.daml
+module Test.LoanLifecycle where
+
+import Daml.Script
+import Test.Setup
+import Lex.Types
+import Lex.Operator
+import Lex.LoanProposal
+import Lex.LoanOffer
+import Lex.ActiveLoan
+import Lex.Collateral
+import DA.Date
+import DA.Assert (assertEqual, assertMsg)
+
+-- ===========================================================================
+-- TEST 1: Full happy path
+-- Borrower creates proposal → two lenders bid → borrower accepts best offer
+-- → atomic settlement → repayment → loan closed
+-- ===========================================================================
+
+test_fullLoanLifecycle : Script ()
+test_fullLoanLifecycle = do
+  -- Setup
+  p   <- allocateTestParties
+  env <- bootstrapPlatform p
+
+  -- -------------------------------------------------------------------------
+  -- Step 1: Borrower creates proposal, initially visible only to AlphaBank
+  -- -------------------------------------------------------------------------
+  proposalCid <- createStandardProposal p env.operatorCid [p.lender1]
+
+  -- Verify AlphaBank can see the proposal
+  alphaBankView <- queryFilter @LoanProposal p.lender1
+    (\prop -> prop.proposalRef == "LEX-2024-001")
+  assertMsg "AlphaBank should see the proposal" (length alphaBankView == 1)
+
+  -- Verify BetaFund CANNOT see the proposal (privacy check)
+  betaFundView <- queryFilter @LoanProposal p.lender2
+    (\prop -> prop.proposalRef == "LEX-2024-001")
+  assertMsg "BetaFund should NOT see the proposal yet" (length betaFundView == 0)
+
+  -- -------------------------------------------------------------------------
+  -- Step 2: Borrower adds BetaFund to the authorized list
+  -- -------------------------------------------------------------------------
+  proposalCid <- submit p.borrower1 do
+    exerciseCmd proposalCid AddAuthorizedLender with newLender = p.lender2
+
+  -- Now BetaFund can see it
+  betaFundView2 <- queryFilter @LoanProposal p.lender2
+    (\prop -> prop.proposalRef == "LEX-2024-001")
+  assertMsg "BetaFund should now see the proposal" (length betaFundView2 == 1)
+
+  -- GammaCapital still cannot (never invited)
+  gammaView <- queryFilter @LoanProposal p.lender3
+    (\prop -> prop.proposalRef == "LEX-2024-001")
+  assertMsg "GammaCapital must NOT see the proposal" (length gammaView == 0)
+
+  -- -------------------------------------------------------------------------
+  -- Step 3: Both lenders submit confidential offers
+  -- AlphaBank offers 4.25%, BetaFund offers 4.50%
+  -- PRIVACY: each lender cannot see the other's offer
+  -- -------------------------------------------------------------------------
+  alphaBankOfferCid <- createAlphaBankOffer p "LEX-2024-001" 425
+  betaFundOfferCid  <- createBetaFundOffer  p "LEX-2024-001" 450
+
+  -- AlphaBank CANNOT see BetaFund's offer (privacy verification)
+  alphaCanSeeBetaOffer <- queryFilter @LoanOffer p.lender1
+    (\o -> o.lender == p.lender2)
+  assertMsg "AlphaBank must NOT see BetaFund's offer" (length alphaCanSeeBetaOffer == 0)
+
+  -- BetaFund CANNOT see AlphaBank's offer
+  betaCanSeeAlphaOffer <- queryFilter @LoanOffer p.lender2
+    (\o -> o.lender == p.lender1)
+  assertMsg "BetaFund must NOT see AlphaBank's offer" (length betaCanSeeAlphaOffer == 0)
+
+  -- Borrower can see BOTH offers
+  borrowerOffersView <- queryFilter @LoanOffer p.borrower1
+    (\o -> o.proposalRef == "LEX-2024-001")
+  assertMsg "Borrower should see both offers" (length borrowerOffersView == 2)
+
+  -- -------------------------------------------------------------------------
+  -- Step 4: Borrower accepts AlphaBank's offer (better rate: 4.25% vs 4.50%)
+  -- ATOMIC SETTLEMENT: proposal archived + offer consumed + ActiveLoan + Collateral
+  -- -------------------------------------------------------------------------
+  (loanCid, colCid) <- submit p.borrower1 do
+    exerciseCmd proposalCid AcceptOffer with
+      offerCid       = alphaBankOfferCid
+      settlementDate = date 2024 Feb 1
+
+  -- Verify ActiveLoan exists with correct terms
+  Some (_, loan) <- queryContractId p.borrower1 loanCid
+  assertMsg "Loan should be active"               (loan.status == "ACTIVE")
+  assertMsg "Correct principal"                   (loan.principal == 5_000_000.0)
+  assertMsg "AlphaBank's rate applied"            (loan.interestRateBps == 425)
+  assertMsg "Lender is AlphaBank"                 (loan.lender == p.lender1)
+  assertMsg "Schedule generated"                  (length loan.repaymentSchedule > 0)
+
+  -- Verify CollateralLock exists
+  Some (_, col) <- queryContractId p.borrower1 colCid
+  assertMsg "Collateral should be locked"         (col.status == "LOCKED")
+  assertMsg "Collateral value correct"            (col.assetValue == 8_500_000.0)
+
+  -- Verify LoanProposal is gone (consumed)
+  proposalView <- queryContractId p.borrower1 proposalCid
+  assertMsg "Proposal should be consumed"         (proposalView == None)
+
+  -- Verify BetaFund's offer still exists (was NOT consumed)
+  Some (_, betaOffer) <- queryContractId p.borrower1 betaFundOfferCid
+  assertMsg "BetaFund offer still pending"        (betaOffer.status == "PENDING")
+
+  -- -------------------------------------------------------------------------
+  -- Step 5: Borrower makes first quarterly repayment (period index 0)
+  -- -------------------------------------------------------------------------
+  let firstPayment = loan.repaymentSchedule !! 0
+  loanCid2 <- submit p.borrower1 do
+    exerciseCmd loanCid MakeRepayment with
+      scheduleIndex = 0
+      paymentAmount = firstPayment.totalDue
+      paymentDate   = date 2024 May 1
+
+  Some (_, loan2) <- queryContractId p.borrower1 loanCid2
+  assertMsg "Amount repaid updated" (loan2.amountRepaid == firstPayment.totalDue)
+
+  -- Verify repayment record created
+  repRecords <- queryFilter @RepaymentRecord p.lender1
+    (\r -> r.loanRef == "LEX-2024-001")
+  assertMsg "Repayment record exists" (length repRecords == 1)
+
+  -- -------------------------------------------------------------------------
+  -- Step 6: Reject BetaFund's outstanding offer (cleanup)
+  -- -------------------------------------------------------------------------
+  submit p.borrower1 do
+    exerciseCmd betaFundOfferCid RejectOffer
+
+  debug "✓ test_fullLoanLifecycle: all assertions passed"
+  return ()
+
+-- ===========================================================================
+-- TEST 2: Privacy enforcement — uninvited lender sees nothing
+-- ===========================================================================
+
+test_privacyEnforcement : Script ()
+test_privacyEnforcement = do
+  p   <- allocateTestParties
+  env <- bootstrapPlatform p
+
+  -- Create proposal visible only to AlphaBank
+  proposalCid <- createStandardProposal p env.operatorCid [p.lender1]
+
+  -- GammaCapital (never onboarded for this deal) queries — must see nothing
+  gammaProposals <- queryFilter @LoanProposal p.lender3
+    (\_ -> True)
+  assertMsg "Uninvited lender sees zero proposals" (length gammaProposals == 0)
+
+  -- AlphaBank creates offer
+  offerCid <- createAlphaBankOffer p "LEX-2024-001" 425
+
+  -- GammaCapital cannot see AlphaBank's offer either
+  gammaOffers <- queryFilter @LoanOffer p.lender3 (\_ -> True)
+  assertMsg "Uninvited lender sees zero offers" (length gammaOffers == 0)
+
+  -- Operator CAN see proposals (for governance)
+  operatorProposals <- queryFilter @LoanProposal p.operator (\_ -> True)
+  assertMsg "Operator sees proposals for governance" (length operatorProposals == 1)
+
+  -- Operator CANNOT see offers (confidential between borrower + lender)
+  operatorOffers <- queryFilter @LoanOffer p.operator (\_ -> True)
+  assertMsg "Operator cannot see confidential offers" (length operatorOffers == 0)
+
+  debug "✓ test_privacyEnforcement: all privacy checks passed"
+  return ()
+
+-- ===========================================================================
+-- TEST 3: Offer withdrawal
+-- ===========================================================================
+
+test_offerWithdrawal : Script ()
+test_offerWithdrawal = do
+  p   <- allocateTestParties
+  env <- bootstrapPlatform p
+
+  proposalCid <- createStandardProposal p env.operatorCid [p.lender1]
+  offerCid    <- createAlphaBankOffer p "LEX-2024-001" 425
+
+  -- AlphaBank changes their mind and withdraws
+  submit p.lender1 do exerciseCmd offerCid WithdrawOffer
+
+  -- Offer is gone
+  offerView <- queryContractId p.borrower1 offerCid
+  assertMsg "Withdrawn offer is archived" (offerView == None)
+
+  debug "✓ test_offerWithdrawal: passed"
+  return ()
+
+-- ===========================================================================
+-- TEST 4: Proposal cancellation
+-- ===========================================================================
+
+test_proposalCancellation : Script ()
+test_proposalCancellation = do
+  p   <- allocateTestParties
+  env <- bootstrapPlatform p
+
+  proposalCid <- createStandardProposal p env.operatorCid [p.lender1, p.lender2]
+
+  -- Borrower cancels
+  submit p.borrower1 do exerciseCmd proposalCid CancelProposal
+
+  -- Proposal is gone
+  propView <- queryContractId p.borrower1 proposalCid
+  assertMsg "Cancelled proposal is archived" (propView == None)
+
+  debug "✓ test_proposalCancellation: passed"
+  return ()
+
+-- ===========================================================================
+-- TEST 5: Default declaration
+-- ===========================================================================
+
+test_loanDefault : Script ()
+test_loanDefault = do
+  p   <- allocateTestParties
+  env <- bootstrapPlatform p
+
+  proposalCid  <- createStandardProposal p env.operatorCid [p.lender1]
+  offerCid     <- createAlphaBankOffer p "LEX-2024-001" 425
+
+  (loanCid, _colCid) <- submit p.borrower1 do
+    exerciseCmd proposalCid AcceptOffer with
+      offerCid       = offerCid
+      settlementDate = date 2024 Feb 1
+
+  -- Borrower misses payments → lender declares default
+  defaultCid <- submit p.lender1 do
+    exerciseCmd loanCid DeclareDefault with
+      reason      = "Missed three consecutive quarterly payments"
+      defaultDate = date 2024 Nov 1
+
+  Some (_, defRecord) <- queryContractId p.lender1 defaultCid
+  assertMsg "Default record loanRef correct" (defRecord.loanRef == "LEX-2024-001")
+
+  debug "✓ test_loanDefault: passed"
+  return ()
+
+-- ===========================================================================
+-- TEST 6: Unauthorized actions are rejected
+-- ===========================================================================
+
+test_unauthorizedActions : Script ()
+test_unauthorizedActions = do
+  p   <- allocateTestParties
+  env <- bootstrapPlatform p
+
+  proposalCid <- createStandardProposal p env.operatorCid [p.lender1]
+
+  -- AlphaBank should NOT be able to cancel a borrower's proposal
+  cancelResult <- submitMustFail p.lender1 do
+    exerciseCmd proposalCid CancelProposal
+
+  -- BetaFund (not invited) should NOT be able to add themselves to the proposal
+  addSelfResult <- submitMustFail p.lender2 do
+    exerciseCmd proposalCid AddAuthorizedLender with newLender = p.lender2
+
+  debug "✓ test_unauthorizedActions: all unauthorized actions correctly rejected"
+  return ()

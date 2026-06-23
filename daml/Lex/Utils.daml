@@ -1,0 +1,89 @@
+-- | Schedule generation utilities for Lex.
+module Lex.Utils where
+
+import Lex.Types
+import DA.Date (addDays)
+
+-- ---------------------------------------------------------------------------
+-- Date helpers
+-- ---------------------------------------------------------------------------
+
+-- | Approximate month arithmetic (30 days/month) — fine for hackathon demos.
+addMonths : Date -> Int -> Date
+addMonths d months = addDays d (approxDaysInMonths months)
+
+-- ---------------------------------------------------------------------------
+-- Schedule builders
+-- ---------------------------------------------------------------------------
+
+generateSchedule
+  : Decimal    -- ^ Principal
+  -> Int       -- ^ Rate in bps
+  -> Int       -- ^ Term in months
+  -> Date      -- ^ Loan start date
+  -> RepaymentType
+  -> [RepaymentEntry]
+generateSchedule principal rateBps termMonths startDate repType =
+  case repType of
+    Bullet    -> bulletSchedule principal rateBps termMonths startDate
+    Monthly   -> amortiseSchedule principal rateBps termMonths startDate 1
+    Quarterly -> amortiseSchedule principal rateBps termMonths startDate 3
+
+-- | Single balloon payment at maturity.
+bulletSchedule : Decimal -> Int -> Int -> Date -> [RepaymentEntry]
+bulletSchedule principal rateBps termMonths startDate =
+  let totalInterest = simpleInterest principal rateBps termMonths
+      maturity      = addMonths startDate termMonths
+  in [ RepaymentEntry with
+         dueDate    = maturity
+         principal  = principal
+         interest   = totalInterest
+         totalDue   = principal + totalInterest
+         paidAmount = 0.0
+         isPaid     = False
+     ]
+
+-- | Equal periodic payments.  periodMonths is 1 (monthly) or 3 (quarterly).
+amortiseSchedule : Decimal -> Int -> Int -> Date -> Int -> [RepaymentEntry]
+amortiseSchedule principal rateBps termMonths startDate periodMonths =
+  let numPeriods  = termMonths / periodMonths
+      periodsYear = 12 / periodMonths
+      pmt         = periodicPayment principal rateBps termMonths periodsYear
+      periodRate  = bpsToRate rateBps / intToDecimal periodsYear
+
+      go : Int -> Decimal -> [RepaymentEntry]
+      go period balance
+        | period > numPeriods = []
+        | otherwise =
+            let int_  = balance * periodRate
+                princ = pmt - int_
+                -- clamp last period to avoid floating-point overshoot
+                princ' = if period == numPeriods then balance else princ
+                int_'  = if period == numPeriods then balance * periodRate else int_
+                total  = princ' + int_'
+                entry  = RepaymentEntry with
+                           dueDate    = addMonths startDate (period * periodMonths)
+                           principal  = princ'
+                           interest   = int_'
+                           totalDue   = total
+                           paidAmount = 0.0
+                           isPaid     = False
+            in entry :: go (period + 1) (balance - princ')
+  in go 1 principal
+
+-- | Mark a specific period as paid, returning the updated schedule.
+markPeriodPaid : Int -> Decimal -> [RepaymentEntry] -> [RepaymentEntry]
+markPeriodPaid targetIdx paymentAmount entries =
+  let updateEntry idx entry =
+        if idx == targetIdx
+        then entry with paidAmount = paymentAmount, isPaid = paymentAmount >= entry.totalDue
+        else entry
+  in zipWith updateEntry [0..] entries
+
+-- | Sum all amounts paid so far across the schedule.
+totalAmountPaid : [RepaymentEntry] -> Decimal
+totalAmountPaid = foldl (\acc e -> acc + e.paidAmount) 0.0
+
+-- | True when every scheduled entry is fully paid.
+isFullyRepaid : [RepaymentEntry] -> Bool
+isFullyRepaid = all (.isPaid)

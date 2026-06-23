@@ -1,0 +1,16 @@
+// Canton bootstrap script — runs after node starts.
+// Connects participant to domain and uploads the Lex DAR.
+
+val participant = participants.local.head
+val domain = domains.all.head
+
+// Connect participant to domain
+participant.domains.connect_local(domain)
+
+// Upload compiled DAR
+val darPath = "target/lex-private-credit-0.0.1.dar"
+participant.dars.upload(darPath)
+
+println(s"✓ Lex DAR uploaded to Canton participant")
+println(s"  Ledger API: localhost:5011")
+println(s"  Admin  API: localhost:5012")

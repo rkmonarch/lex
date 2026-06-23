@@ -1,0 +1,116 @@
+-- | Marketplace governance — root of trust for Lex.
+-- The operator onboards participants and controls platform-level settings.
+-- Visibility: profiles are visible only to the operator + the onboarded party.
+module Lex.Operator where
+
+import Lex.Types
+
+-- ---------------------------------------------------------------------------
+-- Root of trust
+-- ---------------------------------------------------------------------------
+
+template MarketplaceOperator
+  with
+    operator    : Party
+    platformName: Text
+    description : Text
+  where
+    signatory operator
+
+    -- | Register a new lender.  Lenders can see proposals they are invited to.
+    nonconsuming choice OnboardLender : ContractId LenderProfile
+      with
+        lender       : Party
+        legalName    : Text
+        jurisdiction : Text
+        creditRating : Text  -- ^ e.g. "A+", "BBB"
+        kycRef       : Text  -- ^ External KYC/AML reference
+      controller operator
+      do
+        -- Prevent duplicate profiles (best-effort; script caller should check)
+        create LenderProfile with
+          operator
+          lender
+          legalName
+          jurisdiction
+          creditRating
+          kycRef
+          isActive = True
+
+    -- | Register a new borrower.
+    nonconsuming choice OnboardBorrower : ContractId BorrowerProfile
+      with
+        borrower     : Party
+        legalName    : Text
+        jurisdiction : Text
+        creditScore  : Optional Int  -- ^ Internal credit score (50–850)
+        kycRef       : Text
+      controller operator
+      do
+        create BorrowerProfile with
+          operator
+          borrower
+          legalName
+          jurisdiction
+          creditScore
+          kycRef
+          isActive = True
+
+-- ---------------------------------------------------------------------------
+-- Party profiles (issued by operator, visible only to that party + operator)
+-- ---------------------------------------------------------------------------
+
+-- | Proof that a party is a KYC-cleared lender on the Lex platform.
+template LenderProfile
+  with
+    operator     : Party
+    lender       : Party
+    legalName    : Text
+    jurisdiction : Text
+    creditRating : Text
+    kycRef       : Text
+    isActive     : Bool
+  where
+    signatory operator
+    observer lender  -- lender can see their own profile; no one else can
+
+    choice SuspendLender : ContractId LenderProfile
+      controller operator
+      do
+        create this with isActive = False
+
+    choice ReactivateLender : ContractId LenderProfile
+      controller operator
+      do
+        create this with isActive = True
+
+    choice UpdateCreditRating : ContractId LenderProfile
+      with newRating : Text
+      controller operator
+      do
+        create this with creditRating = newRating
+
+-- | Proof that a party is a KYC-cleared borrower on the Lex platform.
+template BorrowerProfile
+  with
+    operator    : Party
+    borrower    : Party
+    legalName   : Text
+    jurisdiction: Text
+    creditScore : Optional Int
+    kycRef      : Text
+    isActive    : Bool
+  where
+    signatory operator
+    observer borrower  -- borrower can see their own profile; no one else can
+
+    choice SuspendBorrower : ContractId BorrowerProfile
+      controller operator
+      do
+        create this with isActive = False
+
+    choice UpdateCreditScore : ContractId BorrowerProfile
+      with newScore : Optional Int
+      controller operator
+      do
+        create this with creditScore = newScore

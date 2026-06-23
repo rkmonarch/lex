@@ -1,0 +1,183 @@
+-- | Active loan lifecycle — created atomically upon offer acceptance.
+-- Tracks repayment schedule, outstanding balance, and status transitions.
+--
+-- PRIVACY: borrower + lender are joint signatories; operator is observer.
+-- No other party can see this contract (e.g. competing lenders remain blind).
+module Lex.ActiveLoan where
+
+import Lex.Types
+import Lex.Utils
+import DA.Date (Date)
+
+-- ---------------------------------------------------------------------------
+-- Active Loan
+-- ---------------------------------------------------------------------------
+
+template ActiveLoan
+  with
+    borrower           : Party
+    lender             : Party
+    operator           : Party
+    principal          : Decimal
+    currency           : Currency
+    interestRateBps    : Int
+    startDate          : Date
+    maturityDate       : Date
+    repaymentSchedule  : [RepaymentEntry]
+    amountRepaid       : Decimal
+    status             : Text     -- ^ "ACTIVE" | "REPAID" | "DEFAULTED"
+    conditions         : [Text]
+    loanRef            : Text
+    -- Collateral is cross-referenced by loanRef (Text) to avoid a circular
+    -- template dependency.  The CollateralLock contract holds the same loanRef.
+  where
+    signatory borrower, lender
+    observer operator
+
+    ensure
+      principal > 0.0 &&
+      interestRateBps >= 0 &&
+      (length repaymentSchedule) > 0
+
+    -- | Borrower makes a scheduled repayment.
+    -- Archives this contract and creates a successor with updated balances.
+    choice MakeRepayment : ContractId ActiveLoan
+      with
+        scheduleIndex  : Int     -- ^ Zero-based index into repaymentSchedule
+        paymentAmount  : Decimal
+        paymentDate    : Date
+      controller borrower
+      do
+        assertMsg "Loan must be active"      (status == "ACTIVE")
+        assertMsg "Payment must be positive" (paymentAmount > 0.0)
+
+        let updatedSchedule = markPeriodPaid scheduleIndex paymentAmount repaymentSchedule
+            newAmountRepaid = amountRepaid + paymentAmount
+            totalDue        = foldl (\a e -> a + e.totalDue) 0.0 repaymentSchedule
+            newStatus       = if isFullyRepaid updatedSchedule then "REPAID" else "ACTIVE"
+
+        -- Also emit an audit record
+        create RepaymentRecord with
+          borrower
+          lender
+          operator
+          loanRef
+          scheduleIndex
+          paymentAmount
+          paymentDate
+          runningTotal = newAmountRepaid
+
+        create this with
+          repaymentSchedule = updatedSchedule
+          amountRepaid      = newAmountRepaid
+          status            = newStatus
+
+    -- | Lender declares default after maturity or covenant breach.
+    choice DeclareDefault : ContractId DefaultRecord
+      with
+        reason      : Text
+        defaultDate : Date
+      controller lender
+      do
+        assertMsg "Loan must be active to default" (status == "ACTIVE")
+        create DefaultRecord with
+          borrower
+          lender
+          operator
+          loanRef
+          principal
+          amountRepaid
+          outstandingBalance = principal - amountRepaid  -- simplified
+          reason
+          defaultDate
+
+    -- | Lender formally closes a fully-repaid loan.
+    choice CloseLoan : ()
+      controller lender
+      do
+        assertMsg "Loan must be repaid to close" (status == "REPAID")
+        return ()
+
+    -- | Read-only view: either party can retrieve the current statement.
+    nonconsuming choice GetStatement : LoanStatement
+      controller borrower  -- lender can use their own choice below
+      do
+        let totalDue    = foldl (\a e -> a + e.totalDue) 0.0 repaymentSchedule
+            outstanding = totalDue - amountRepaid
+        return LoanStatement with
+          loanRef
+          principal
+          currency
+          interestRateBps
+          startDate
+          maturityDate
+          amountRepaid
+          outstandingBalance = outstanding
+          status
+          scheduleEntries = repaymentSchedule
+
+    nonconsuming choice GetStatementAsLender : LoanStatement
+      controller lender
+      do
+        let totalDue    = foldl (\a e -> a + e.totalDue) 0.0 repaymentSchedule
+            outstanding = totalDue - amountRepaid
+        return LoanStatement with
+          loanRef
+          principal
+          currency
+          interestRateBps
+          startDate
+          maturityDate
+          amountRepaid
+          outstandingBalance = outstanding
+          status
+          scheduleEntries = repaymentSchedule
+
+-- ---------------------------------------------------------------------------
+-- Return types and audit records
+-- ---------------------------------------------------------------------------
+
+data LoanStatement = LoanStatement
+  with
+    loanRef            : Text
+    principal          : Decimal
+    currency           : Currency
+    interestRateBps    : Int
+    startDate          : Date
+    maturityDate       : Date
+    amountRepaid       : Decimal
+    outstandingBalance : Decimal
+    status             : Text
+    scheduleEntries    : [RepaymentEntry]
+  deriving (Show)
+
+-- | Immutable audit trail for each repayment event.
+template RepaymentRecord
+  with
+    borrower      : Party
+    lender        : Party
+    operator      : Party
+    loanRef       : Text
+    scheduleIndex : Int
+    paymentAmount : Decimal
+    paymentDate   : Date
+    runningTotal  : Decimal
+  where
+    signatory borrower
+    observer lender, operator
+
+-- | Immutable record of a declared default.
+template DefaultRecord
+  with
+    borrower          : Party
+    lender            : Party
+    operator          : Party
+    loanRef           : Text
+    principal         : Decimal
+    amountRepaid      : Decimal
+    outstandingBalance: Decimal
+    reason            : Text
+    defaultDate       : Date
+  where
+    signatory lender
+    observer borrower, operator

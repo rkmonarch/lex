@@ -1,0 +1,168 @@
+-- | Reusable test fixtures for Lex scripts.
+module Test.Setup where
+
+import Daml.Script
+import Lex.Types
+import Lex.Operator
+import Lex.LoanProposal
+import Lex.LoanOffer
+import Lex.ActiveLoan
+import Lex.Collateral
+import DA.Date
+
+-- ---------------------------------------------------------------------------
+-- Party allocation
+-- ---------------------------------------------------------------------------
+
+data TestParties = TestParties
+  with
+    operator : Party
+    borrower1: Party  -- ^ AcmeCorp (seeks loan)
+    lender1  : Party  -- ^ AlphaBank
+    lender2  : Party  -- ^ BetaFund
+    lender3  : Party  -- ^ GammaCapital (not invited to first proposal)
+  deriving (Show)
+
+allocateTestParties : Script TestParties
+allocateTestParties = do
+  operator  <- allocatePartyWithHint "Operator"      (PartyIdHint "Operator")
+  borrower1 <- allocatePartyWithHint "AcmeCorp"      (PartyIdHint "AcmeCorp")
+  lender1   <- allocatePartyWithHint "AlphaBank"     (PartyIdHint "AlphaBank")
+  lender2   <- allocatePartyWithHint "BetaFund"      (PartyIdHint "BetaFund")
+  lender3   <- allocatePartyWithHint "GammaCapital"  (PartyIdHint "GammaCapital")
+  return TestParties with ..
+
+-- ---------------------------------------------------------------------------
+-- Platform bootstrapping
+-- ---------------------------------------------------------------------------
+
+data TestSetup = TestSetup
+  with
+    parties          : TestParties
+    operatorCid      : ContractId MarketplaceOperator
+    borrowerProfile  : ContractId BorrowerProfile
+    lender1Profile   : ContractId LenderProfile
+    lender2Profile   : ContractId LenderProfile
+  deriving (Show)
+
+bootstrapPlatform : TestParties -> Script TestSetup
+bootstrapPlatform p = do
+  -- Operator creates the marketplace
+  operatorCid <- submit p.operator do
+    createCmd MarketplaceOperator with
+      operator     = p.operator
+      platformName = "Lex Private Credit"
+      description  = "Institutional-grade confidential credit marketplace on Canton"
+
+  -- Onboard participants
+  borrowerProfile <- submit p.operator do
+    exerciseCmd operatorCid OnboardBorrower with
+      borrower     = p.borrower1
+      legalName    = "Acme Corporation Ltd"
+      jurisdiction = "UK"
+      creditScore  = Some 720
+      kycRef       = "KYC-BORROWER-2024-001"
+
+  lender1Profile <- submit p.operator do
+    exerciseCmd operatorCid OnboardLender with
+      lender       = p.lender1
+      legalName    = "Alpha Bank plc"
+      jurisdiction = "UK"
+      creditRating = "A+"
+      kycRef       = "KYC-LENDER-2024-001"
+
+  lender2Profile <- submit p.operator do
+    exerciseCmd operatorCid OnboardLender with
+      lender       = p.lender2
+      legalName    = "Beta Credit Fund LP"
+      jurisdiction = "Cayman Islands"
+      creditRating = "BBB+"
+      kycRef       = "KYC-LENDER-2024-002"
+
+  return TestSetup with
+    parties         = p
+    operatorCid
+    borrowerProfile
+    lender1Profile
+    lender2Profile
+
+-- ---------------------------------------------------------------------------
+-- Fixture: standard loan proposal
+-- ---------------------------------------------------------------------------
+
+createStandardProposal
+  : TestParties
+  -> ContractId MarketplaceOperator  -- ^ Unused here; passed for context
+  -> [Party]                          -- ^ Initial authorized lenders
+  -> Script (ContractId LoanProposal)
+createStandardProposal p _ initialLenders = do
+  submit p.borrower1 do
+    createCmd LoanProposal with
+      borrower   = p.borrower1
+      operator   = p.operator
+      terms      = LoanTerms with
+        principal       = 5_000_000.0   -- GBP 5 million
+        currency        = GBP
+        interestRateBps = 450           -- 4.50 % p.a.
+        termMonths      = 36
+        repaymentType   = Quarterly
+        covenants       = [ "Net debt / EBITDA < 3.0x"
+                          , "Interest coverage > 3.0x"
+                          , "No additional senior secured debt without consent"
+                          ]
+      collateralDescription = "First-ranking charge over Acme HQ, 1 Tech Lane, London EC1"
+      collateralValue       = 8_500_000.0
+      purpose               = "Growth capex — new manufacturing facility in Leeds"
+      authorizedLenders     = initialLenders
+      proposalRef           = "LEX-2024-001"
+      createdAt             = date 2024 Jan 15
+      expiresAt             = date 2024 Mar 15
+      status                = "OPEN"
+
+-- ---------------------------------------------------------------------------
+-- Fixture: standard loan offer
+-- ---------------------------------------------------------------------------
+
+createAlphaBankOffer
+  : TestParties
+  -> Text        -- ^ proposalRef
+  -> Int         -- ^ offered rate in bps
+  -> Script (ContractId LoanOffer)
+createAlphaBankOffer p proposalRef rateBps = do
+  submit p.lender1 do
+    createCmd LoanOffer with
+      lender    = p.lender1
+      borrower  = p.borrower1
+      operator  = p.operator
+      proposalRef
+      terms     = OfferTerms with
+        offeredPrincipal = 5_000_000.0
+        currency         = GBP
+        offeredRateBps   = rateBps
+        conditions       = ["Drawdown within 10 business days of acceptance"]
+        validUntilDate   = date 2024 Feb 28
+      specialConditions = ["Financial statements due quarterly"]
+      submittedAt       = date 2024 Jan 20
+      status            = "PENDING"
+
+createBetaFundOffer
+  : TestParties
+  -> Text
+  -> Int
+  -> Script (ContractId LoanOffer)
+createBetaFundOffer p proposalRef rateBps = do
+  submit p.lender2 do
+    createCmd LoanOffer with
+      lender    = p.lender2
+      borrower  = p.borrower1
+      operator  = p.operator
+      proposalRef
+      terms     = OfferTerms with
+        offeredPrincipal = 5_000_000.0
+        currency         = GBP
+        offeredRateBps   = rateBps
+        conditions       = ["Escrow account required for debt service reserve"]
+        validUntilDate   = date 2024 Feb 28
+      specialConditions = []
+      submittedAt       = date 2024 Jan 22
+      status            = "PENDING"

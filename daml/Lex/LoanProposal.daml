@@ -1,0 +1,175 @@
+-- | Borrower's confidential loan proposal — the entry point for every deal.
+--
+-- PRIVACY:
+--   signatory  : borrower
+--   observers  : operator  +  authorizedLenders  (only the ones borrower invites)
+--
+-- A lender not in authorizedLenders cannot see this proposal exists.
+-- Adding/removing lenders archives-and-recreates the contract (standard Daml
+-- observer-update pattern) — each version is a distinct Canton contract.
+--
+-- ATOMIC SETTLEMENT (AcceptOffer):
+--   In one Canton transaction:
+--     1.  This contract is archived   (borrower authority)
+--     2.  The chosen LoanOffer is consumed via SettleOffer  (lender authority as signatory)
+--     3.  ActiveLoan is created      (signatories: borrower + lender — both present)
+--     4.  CollateralLock is created  (signatories: borrower + lender — both present)
+--   All four steps commit or all four roll back.  No intermediary state is visible.
+module Lex.LoanProposal where
+
+import Lex.Types
+import Lex.Utils
+import Lex.LoanOffer
+import Lex.ActiveLoan
+import Lex.Collateral
+
+import DA.Date (Date)
+import DA.List (nub, elem)
+
+-- ---------------------------------------------------------------------------
+-- Loan Proposal
+-- ---------------------------------------------------------------------------
+
+template LoanProposal
+  with
+    borrower            : Party
+    operator            : Party
+    terms               : LoanTerms
+    collateralDescription : Text
+    collateralValue     : Decimal   -- ^ Indicative collateral value
+    purpose             : Text      -- ^ Use of proceeds (free-form)
+    authorizedLenders   : [Party]   -- ^ ONLY these parties can see this proposal
+    proposalRef         : Text      -- ^ Human-readable unique reference e.g. "LEX-2024-001"
+    createdAt           : Date
+    expiresAt           : Date
+    status              : Text      -- ^ "OPEN" | "FUNDED" | "CANCELLED" | "EXPIRED"
+  where
+    signatory borrower
+    -- Operator indexes proposals for governance; only invited lenders see them.
+    observer operator :: authorizedLenders
+
+    ensure
+      terms.principal > 0.0 &&
+      terms.interestRateBps >= 0 &&
+      terms.termMonths > 0 &&
+      collateralValue >= 0.0 &&
+      status `elem` ["OPEN", "FUNDED", "CANCELLED", "EXPIRED"]
+
+    -- ------------------------------------------------------------------
+    -- Visibility management
+    -- ------------------------------------------------------------------
+
+    -- | Grant a lender visibility of this proposal.
+    -- Archives and recreates with the updated observer list.
+    choice AddAuthorizedLender : ContractId LoanProposal
+      with
+        newLender : Party
+      controller borrower
+      do
+        assertMsg "Proposal must be open"         (status == "OPEN")
+        assertMsg "Lender already has access"     (newLender `notElem` authorizedLenders)
+        create this with
+          authorizedLenders = nub (newLender :: authorizedLenders)
+
+    -- | Revoke a lender's visibility (only before they submit an offer).
+    choice RemoveAuthorizedLender : ContractId LoanProposal
+      with
+        targetLender : Party
+      controller borrower
+      do
+        assertMsg "Proposal must be open"    (status == "OPEN")
+        assertMsg "Lender not in access list" (targetLender `elem` authorizedLenders)
+        create this with
+          authorizedLenders = filter (/= targetLender) authorizedLenders
+
+    -- ------------------------------------------------------------------
+    -- Lifecycle
+    -- ------------------------------------------------------------------
+
+    -- | Borrower cancels before any offer is accepted.
+    choice CancelProposal : ()
+      controller borrower
+      do
+        assertMsg "Can only cancel open proposals" (status == "OPEN")
+        return ()
+
+    -- | Operator marks a proposal expired (off-chain cron / trigger).
+    choice ExpireProposal : ()
+      controller operator
+      do
+        assertMsg "Can only expire open proposals" (status == "OPEN")
+        return ()
+
+    -- ------------------------------------------------------------------
+    -- ATOMIC SETTLEMENT — the centrepiece of Lex
+    -- ------------------------------------------------------------------
+
+    -- | Borrower accepts a specific lender's offer.
+    --
+    -- Authority analysis:
+    --   • borrower  — controller of this choice (signatory of LoanProposal)
+    --   • lender    — signatory of the LoanOffer consumed via SettleOffer
+    --   Combined authority is sufficient to create multi-signatory contracts.
+    --
+    -- Returns: (ActiveLoan CID, CollateralLock CID)
+    choice AcceptOffer : (ContractId ActiveLoan, ContractId CollateralLock)
+      with
+        offerCid       : ContractId LoanOffer
+        settlementDate : Date
+      controller borrower
+      do
+        assertMsg "Proposal must be open" (status == "OPEN")
+
+        -- Consume the offer, obtaining lender authority + offer data atomically.
+        offerData <- exercise offerCid SettleOffer
+
+        -- Validate the offer matches this proposal.
+        assertMsg "Offer must reference this proposal"
+          (offerData.proposalRef == proposalRef)
+        assertMsg "Offer currency must match proposal"
+          (offerData.terms.currency == terms.currency)
+        assertMsg "Offer principal may not exceed requested amount"
+          (offerData.terms.offeredPrincipal <= terms.principal * 1.1)  -- 10 % tolerance
+
+        -- Build the amortisation schedule using the lender's agreed rate.
+        let schedule = generateSchedule
+              offerData.terms.offeredPrincipal
+              offerData.terms.offeredRateBps
+              terms.termMonths
+              settlementDate
+              terms.repaymentType
+
+        let maturity = addMonths settlementDate terms.termMonths
+
+        -- Create ActiveLoan  (signatories: borrower + lender — both authorised).
+        loanCid <- create ActiveLoan with
+          borrower         = borrower
+          lender           = offerData.lender
+          operator         = operator
+          principal        = offerData.terms.offeredPrincipal
+          currency         = offerData.terms.currency
+          interestRateBps  = offerData.terms.offeredRateBps
+          startDate        = settlementDate
+          maturityDate     = maturity
+          repaymentSchedule = schedule
+          amountRepaid     = 0.0
+          status           = "ACTIVE"
+          conditions       = offerData.terms.conditions <> offerData.specialConditions
+          loanRef          = proposalRef
+
+        -- Create CollateralLock  (signatories: borrower + lender — both authorised).
+        -- Note: CollateralLock and ActiveLoan cross-reference each other via loanRef (Text)
+        -- rather than CID to avoid circular dependency between templates.
+        colCid <- create CollateralLock with
+          borrower         = borrower
+          lender           = offerData.lender
+          operator         = operator
+          assetDescription = collateralDescription
+          assetValue       = collateralValue
+          currency         = offerData.terms.currency
+          lockedAt         = settlementDate
+          maturityDate     = maturity
+          loanRef          = proposalRef
+          status           = "LOCKED"
+
+        return (loanCid, colCid)

@@ -1,0 +1,10 @@
+sdk-version: 2.9.4
+name: lex-private-credit
+version: 0.0.1
+source: daml
+dependencies:
+  - daml-prim
+  - daml-stdlib
+  - daml-script
+build-options:
+  - --target=2.1
