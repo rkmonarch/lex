@@ -101,7 +101,7 @@ export function OfferCard({ offer, onAccept, onReject, isAccepting, privacyMode 
             loading={isAccepting}
           >
             <Check className="w-3.5 h-3.5" />
-            Accept — Settle atomically
+            Accept offer
           </Button>
           <Button
             size="sm"

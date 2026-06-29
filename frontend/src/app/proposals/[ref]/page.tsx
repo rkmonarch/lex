@@ -53,7 +53,7 @@ export default function ProposalDetailPage({ params }: { params: { ref: string }
     setSettleTarget(offerContractId)
     const result = await acceptOffer(proposal!.contractId, offerContractId, new Date().toISOString().split("T")[0])
     if (result) {
-      toast.success("Settlement complete — ActiveLoan + CollateralLock created atomically on Canton")
+      toast.success("Settlement complete. ActiveLoan and CollateralLock created atomically on Canton.")
     }
     setSettleTarget(null)
   }
@@ -189,7 +189,7 @@ export default function ProposalDetailPage({ params }: { params: { ref: string }
           {isBorrower && offers.length > 1 && (
             <div className="flex items-center gap-2 text-xs text-primary border border-primary/20 bg-primary/5 rounded-lg p-3">
               <Zap className="w-3.5 h-3.5 shrink-0" />
-              Accept any offer to trigger atomic settlement: proposal + offer archive, ActiveLoan + CollateralLock created — all in one Canton transaction.
+              Accept any offer to trigger atomic settlement: proposal + offer archive, ActiveLoan + CollateralLock created, all in one Canton transaction.
             </div>
           )}
 

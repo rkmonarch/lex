@@ -71,9 +71,6 @@ export default function NewProposalPage() {
         collateralDescription: values.collateralDescription,
         collateralValue: values.collateralValue,
         purpose: values.purpose,
-        authorizedLenders: [],
-        proposalRef: values.proposalRef,
-        createdAt: new Date().toISOString().split("T")[0],
         expiresAt: values.expiresAt,
       })
       toast.success("Proposal created on Canton ledger")
@@ -100,13 +97,13 @@ export default function NewProposalPage() {
         {/* Deal identity */}
         <FormSection title="Deal identity">
           <Field label="Proposal reference" error={errors.proposalRef?.message}>
-            <Input {...register("proposalRef")} placeholder="LEX-2024-005" />
+            <Input {...register("proposalRef")} placeholder="LEX-2026-005" />
           </Field>
           <Field label="Purpose / use of proceeds" error={errors.purpose?.message}>
             <textarea
               {...register("purpose")}
               rows={3}
-              placeholder="Growth capex — new manufacturing facility…"
+              placeholder="Growth capex: new manufacturing facility…"
               className={cn(
                 "w-full px-3 py-2 bg-[var(--surface)] border border-[var(--border)] rounded-md text-sm text-ink",
                 "placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-primary resize-none"

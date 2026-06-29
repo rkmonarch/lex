@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils"
 
 // ── The crown jewel page — side-by-side view of what each party sees ─────────
 
-const DEMO_REF = "LEX-2024-001"
+const DEMO_REF = "LEX-2026-001"
 
 const proposal = ALL_PROPOSALS.find(p => p.payload.proposalRef === DEMO_REF)!
 const offerAlpha = ALL_OFFERS.find(o => o.payload.proposalRef === DEMO_REF && o.payload.lender.startsWith("Alpha"))!
@@ -20,10 +20,10 @@ export default function PrivacyDemoPage() {
   const [step, setStep] = useState(0)
 
   const steps = [
-    "AcmeCorp creates a proposal — visible only to AlphaBank and BetaFund",
-    "AlphaBank submits offer at 4.25% — only AcmeCorp can see it",
-    "BetaFund submits offer at 4.60% — only AcmeCorp can see it",
-    "AcmeCorp sees both, accepts AlphaBank — atomic settlement on Canton",
+    "AcmeCorp creates a proposal, visible only to AlphaBank and BetaFund",
+    "AlphaBank submits offer at 4.25%, only AcmeCorp can see it",
+    "BetaFund submits offer at 4.60%, only AcmeCorp can see it",
+    "AcmeCorp sees both, accepts AlphaBank. Atomic settlement on Canton.",
   ]
 
   return (
@@ -36,7 +36,7 @@ export default function PrivacyDemoPage() {
         </div>
         <h1 className="section-heading text-ink mb-3">Who sees what?</h1>
         <p className="text-ink-muted max-w-2xl">
-          This is the core value proposition of Lex. The same deal — four parties — four completely different views.
+          This is the core value proposition of Lex. The same deal, four parties, four completely different views.
           Canton enforces this cryptographically, not via access control lists.
         </p>
       </div>
@@ -83,7 +83,7 @@ export default function PrivacyDemoPage() {
           canSeeProposal={true}
           canSeeAlphaOffer={step >= 1}
           canSeeBetaOffer={step >= 2}
-          note="Borrower sees their own proposal and ALL incoming offers — full information."
+          note="Borrower sees their own proposal and all incoming offers."
           highlight
         />
         <PartyView
@@ -111,7 +111,7 @@ export default function PrivacyDemoPage() {
             <div className="w-8 h-8 rounded-full bg-success/10 flex items-center justify-center">
               <CheckCircle2 className="w-4 h-4 text-success" />
             </div>
-            <h3 className="font-medium text-ink">Atomic settlement — one Canton transaction</h3>
+            <h3 className="font-medium text-ink">Atomic settlement: one Canton transaction</h3>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
@@ -143,7 +143,7 @@ export default function PrivacyDemoPage() {
             {[
               "Every contract is encrypted and stored on Canton sub-ledgers.",
               "A contract's payload is only decrypted for its signatories and observers.",
-              "LoanOffer has observer: borrower ONLY — no other party's node receives the ciphertext.",
+              "LoanOffer has observer: borrower ONLY. No other party's node receives the ciphertext.",
               "There is no trusted intermediary. The encryption is enforced at the protocol layer.",
               "A lender cannot query another lender's offer even with direct DB access.",
             ].map((t, i) => (
@@ -253,7 +253,7 @@ function PartyView({
         {/* ActiveLoan (only after step 3) */}
         <ContractRow
           label="ActiveLoan"
-          ref_="LEX-2024-001"
+          ref_="LEX-2026-001"
           visible={step === 3 && (canSeeAlphaOffer || party.role === "operator")}
           content="GBP 5M @ 4.25%"
         />

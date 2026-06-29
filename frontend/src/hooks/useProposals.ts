@@ -1,8 +1,11 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useTransition } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useParty } from "@/context/PartyContext"
 import { proposalsForParty } from "@/lib/mock-data"
+import { getProposals, getProposal, createProposal, addAuthorizedLender } from "@/lib/actions/proposals"
+import { acceptOffer as dbAcceptOffer } from "@/lib/actions/offers"
 import type { ProposalWithId, LoanProposal } from "@/types"
 
 const MOCK = process.env.NEXT_PUBLIC_MOCK_MODE === "true"
@@ -12,66 +15,110 @@ const MOCK = process.env.NEXT_PUBLIC_MOCK_MODE === "true"
 export function useProposals() {
   const { activeParty } = useParty()
 
-  const proposals = useMemo<ProposalWithId[]>(
+  const mockData = useMemo<ProposalWithId[]>(
     () => (MOCK ? proposalsForParty(activeParty.id, activeParty.role) : []),
     [activeParty]
   )
 
-  const open    = useMemo(() => proposals.filter(p => p.payload.status === "OPEN"),    [proposals])
-  const funded  = useMemo(() => proposals.filter(p => p.payload.status === "FUNDED"),  [proposals])
-  const closed  = useMemo(() => proposals.filter(p => p.payload.status !== "OPEN" && p.payload.status !== "FUNDED"), [proposals])
+  const { data: dbData = [], isLoading } = useQuery({
+    queryKey: ["proposals", activeParty.id, activeParty.role],
+    queryFn:  () => getProposals(activeParty.id, activeParty.role),
+    enabled:  !MOCK,
+  })
 
-  return { proposals, open, funded, closed, loading: false }
+  const proposals = MOCK ? mockData : dbData
+  const open      = useMemo(() => proposals.filter(p => p.payload.status === "OPEN"),    [proposals])
+  const funded    = useMemo(() => proposals.filter(p => p.payload.status === "FUNDED"),  [proposals])
+  const closed    = useMemo(() => proposals.filter(p => p.payload.status !== "OPEN" && p.payload.status !== "FUNDED"), [proposals])
+
+  return { proposals, open, funded, closed, loading: MOCK ? false : isLoading }
 }
 
 export function useProposal(ref: string) {
+  const { activeParty } = useParty()
   const { proposals } = useProposals()
-  return proposals.find(p => p.payload.proposalRef === ref) ?? null
+
+  // Fast path: if already in the list (from useProposals cache)
+  const fromList = proposals.find(p => p.payload.proposalRef === ref) ?? null
+
+  const { data: fromDb = null } = useQuery({
+    queryKey: ["proposal", ref],
+    queryFn:  () => getProposal(ref),
+    enabled:  !MOCK && !fromList,
+  })
+
+  return fromList ?? fromDb
 }
 
-// ── Mutations (mock layer) ────────────────────────────────────────────────────
-
-let mockProposals: ProposalWithId[] = [] // shared mutable mock store
+// ── Mutations ─────────────────────────────────────────────────────────────────
 
 export function useCreateProposal() {
   const { activeParty } = useParty()
-  const [loading, setLoading] = useState(false)
+  const qc = useQueryClient()
+  const [isPending, startTransition] = useTransition()
 
-  async function createProposal(payload: Omit<LoanProposal, "borrower" | "operator" | "status">): Promise<void> {
-    setLoading(true)
-    await new Promise(r => setTimeout(r, 800)) // simulate network
-    // In real mode: await createContract(TEMPLATE_IDS.LoanProposal, activeParty.id, { ...payload, borrower: activeParty.id })
-    setLoading(false)
+  async function create(payload: Omit<LoanProposal, "borrower" | "operator" | "status" | "authorizedLenders" | "proposalRef" | "createdAt" | "expiresAt"> & { expiresAt: string }): Promise<string> {
+    if (MOCK) {
+      await new Promise(r => setTimeout(r, 800))
+      return "LEX-MOCK"
+    }
+
+    const result = await createProposal({
+      borrower:             activeParty.id,
+      operator:             "Operator",
+      purpose:              payload.purpose,
+      principal:            payload.terms.principal,
+      currency:             payload.terms.currency,
+      interestRateBps:      payload.terms.interestRateBps,
+      termMonths:           payload.terms.termMonths,
+      repaymentType:        payload.terms.repaymentType,
+      covenants:            payload.terms.covenants,
+      collateralDescription:payload.collateralDescription,
+      collateralValue:      payload.collateralValue,
+      expiresAt:            payload.expiresAt,
+    })
+
+    await qc.invalidateQueries({ queryKey: ["proposals"] })
+    return result.payload.proposalRef
   }
 
-  return { createProposal, loading }
+  return { createProposal: create, loading: isPending }
 }
 
 export function useAddLender() {
-  const [loading, setLoading] = useState(false)
+  const qc = useQueryClient()
+  const [isPending, startTransition] = useTransition()
 
-  async function addLender(contractId: string, newLender: string): Promise<void> {
-    setLoading(true)
-    await new Promise(r => setTimeout(r, 600))
-    setLoading(false)
+  async function addLender(proposalRef: string, lenderPartyId: string): Promise<void> {
+    if (MOCK) { await new Promise(r => setTimeout(r, 600)); return }
+    await addAuthorizedLender(proposalRef, lenderPartyId)
+    await qc.invalidateQueries({ queryKey: ["proposal", proposalRef] })
+    await qc.invalidateQueries({ queryKey: ["proposals"] })
   }
 
-  return { addLender, loading }
+  return { addLender, loading: isPending }
 }
 
 export function useAcceptOffer() {
-  const [loading, setLoading] = useState(false)
+  const qc = useQueryClient()
+  const [isPending, startTransition] = useTransition()
 
   async function acceptOffer(
-    proposalContractId: string,
-    offerContractId: string,
+    proposalRef:    string,
+    offerId:        string,
     settlementDate: string
   ): Promise<{ loanRef: string } | null> {
-    setLoading(true)
-    await new Promise(r => setTimeout(r, 1200)) // simulate atomic settlement
-    setLoading(false)
-    return { loanRef: "LEX-SETTLED" }
+    if (MOCK) {
+      await new Promise(r => setTimeout(r, 1200))
+      return { loanRef: "LEX-LN-MOCK" }
+    }
+
+    const result = await dbAcceptOffer(proposalRef, offerId, settlementDate)
+    await qc.invalidateQueries({ queryKey: ["proposals"] })
+    await qc.invalidateQueries({ queryKey: ["offers"] })
+    await qc.invalidateQueries({ queryKey: ["loans"] })
+    return result
   }
 
-  return { acceptOffer, loading }
+  return { acceptOffer, loading: isPending }
 }

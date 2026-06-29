@@ -38,6 +38,7 @@ export interface OfferTerms {
 }
 
 export interface RepaymentEntry {
+  id?: string      // DB uuid (absent in mock data)
   dueDate: string
   principal: number
   interest: number

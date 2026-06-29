@@ -36,7 +36,7 @@ export default function DashboardPage() {
           <p className="text-ink-muted text-sm mt-1">
             {isBorrower && "Your loan proposals and active facilities"}
             {isLender   && "Deals you're invited to and your outstanding offers"}
-            {activeParty.role === "operator" && "Platform overview — all participants and activity"}
+            {activeParty.role === "operator" && "Platform overview: all participants and activity"}
           </p>
         </div>
         {isBorrower && (
@@ -66,7 +66,7 @@ export default function DashboardPage() {
           icon={TrendingUp}
           label="Active loans"
           value={String(activeLoans.length)}
-          sub={activeLoans.length > 0 ? `${formatCurrency(totalExposure, "GBP")} total` : "—"}
+          sub={activeLoans.length > 0 ? `${formatCurrency(totalExposure, "GBP")} total` : "none"}
         />
         <StatCard
           icon={Lock}

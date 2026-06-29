@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  walletAddress String   @unique
+  displayName   String
+  orgName       String
+  role          String   // "borrower" | "lender"
+  cantonPartyId String   @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Proposal {
+  id                    String   @id @default(uuid())
+  proposalRef           String   @unique
+  borrower              String
+  operator              String   @default("Operator")
+  authorizedLenders     String[] @default([])
+  purpose               String
+  principal             Float
+  currency              String
+  interestRateBps       Int
+  termMonths            Int
+  repaymentType         String   @default("Bullet")
+  covenants             String[] @default([])
+  collateralDescription String
+  collateralValue       Float
+  expiresAt             DateTime
+  status                String   @default("OPEN")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  offers                Offer[]
+
+  @@map("proposals")
+}
+
+model Offer {
+  id                String   @id @default(uuid())
+  proposalRef       String
+  lender            String
+  borrower          String
+  operator          String   @default("Operator")
+  offeredPrincipal  Float
+  currency          String
+  offeredRateBps    Int
+  conditions        String[] @default([])
+  specialConditions String[] @default([])
+  validUntilDate    DateTime
+  submittedAt       DateTime @default(now())
+  status            String   @default("PENDING")
+  updatedAt         DateTime @updatedAt
+
+  proposal          Proposal @relation(fields: [proposalRef], references: [proposalRef], onDelete: Cascade)
+
+  @@index([proposalRef])
+  @@map("offers")
+}
+
+model ActiveLoan {
+  id              String   @id @default(uuid())
+  loanRef         String   @unique
+  proposalRef     String
+  borrower        String
+  lender          String
+  operator        String   @default("Operator")
+  principal       Float
+  currency        String
+  interestRateBps Int
+  startDate       DateTime
+  maturityDate    DateTime
+  amountRepaid    Float    @default(0)
+  conditions      String[] @default([])
+  status          String   @default("ACTIVE")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  repaymentSchedule RepaymentEntry[]
+  collateral        CollateralLock?
+
+  @@map("active_loans")
+}
+
+model RepaymentEntry {
+  id         String     @id @default(uuid())
+  loanRef    String
+  sortOrder  Int
+  dueDate    DateTime
+  principal  Float
+  interest   Float
+  totalDue   Float
+  paidAmount Float      @default(0)
+  isPaid     Boolean    @default(false)
+
+  loan       ActiveLoan @relation(fields: [loanRef], references: [loanRef], onDelete: Cascade)
+
+  @@index([loanRef, sortOrder])
+  @@map("repayment_entries")
+}
+
+model CollateralLock {
+  id               String     @id @default(uuid())
+  loanRef          String     @unique
+  borrower         String
+  lender           String
+  operator         String     @default("Operator")
+  assetDescription String
+  assetValue       Float
+  currency         String
+  lockedAt         DateTime   @default(now())
+  maturityDate     DateTime
+  status           String     @default("LOCKED")
+
+  loan             ActiveLoan @relation(fields: [loanRef], references: [loanRef], onDelete: Cascade)
+
+  @@map("collateral_locks")
+}

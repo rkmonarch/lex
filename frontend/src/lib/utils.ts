@@ -53,7 +53,7 @@ export function bpsToPercent(bps: number): number {
 }
 
 export function ltvRatio(principal: number, collateralValue: number): string {
-  if (!collateralValue) return "—"
+  if (!collateralValue) return "N/A"
   return `${((principal / collateralValue) * 100).toFixed(0)}%`
 }
 

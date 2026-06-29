@@ -12,18 +12,18 @@ const ROLE_ICON = {
   operator: Shield,
 }
 
-const ROLE_COLOR = {
+const ROLE_COLOR: Record<string, string> = {
   borrower: "text-primary",
   lender:   "text-accent",
   operator: "text-ink-muted",
 }
 
-function PartyAvatar({ party, size = "sm" }: { party: DemoParty; size?: "sm" | "md" }) {
+function Avatar({ party, size = "sm" }: { party: DemoParty; size?: "sm" | "md" }) {
   return (
     <span className={cn(
       "inline-flex items-center justify-center rounded-full font-semibold text-white shrink-0",
-      party.color,
-      size === "sm" ? "w-7 h-7 text-xs" : "w-9 h-9 text-sm"
+      size === "sm" ? "w-6 h-6 text-2xs" : "w-7 h-7 text-xs",
+      party.color
     )}>
       {party.avatar}
     </span>
@@ -33,7 +33,7 @@ function PartyAvatar({ party, size = "sm" }: { party: DemoParty; size?: "sm" | "
 export function PartySelector() {
   const { activeParty, setActiveParty, parties } = useParty()
 
-  const roles = [
+  const groups = [
     { key: "borrower" as const, label: "Borrowers" },
     { key: "lender"   as const, label: "Lenders"   },
     { key: "operator" as const, label: "Operator"  },
@@ -43,18 +43,20 @@ export function PartySelector() {
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button className={cn(
-          "flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-[var(--border)]",
-          "bg-[var(--surface)] text-sm text-ink transition-colors hover:bg-muted",
-          "focus:outline-none focus:ring-2 focus:ring-primary"
+          "h-9 flex items-center gap-2 px-2.5 rounded-md text-sm",
+          "border border-[var(--border)] bg-[var(--surface)]",
+          "hover:bg-muted transition-colors focus:outline-none",
+          "group"
         )}>
-          <PartyAvatar party={activeParty} />
-          <div className="hidden sm:flex flex-col items-start leading-none">
-            <span className="font-medium text-xs">{activeParty.shortName}</span>
-            <span className={cn("text-2xs capitalize", ROLE_COLOR[activeParty.role])}>
+          <Avatar party={activeParty} />
+          <div className="hidden sm:flex items-center gap-1.5">
+            <span className="text-xs font-medium text-ink whitespace-nowrap">{activeParty.shortName}</span>
+            <span className="text-ink-faint text-xs">·</span>
+            <span className={cn("text-xs capitalize", ROLE_COLOR[activeParty.role])}>
               {activeParty.role}
             </span>
           </div>
-          <ChevronDown className="w-3.5 h-3.5 text-ink-muted" />
+          <ChevronDown className="w-3.5 h-3.5 text-ink-muted group-data-[state=open]:rotate-180 transition-transform" />
         </button>
       </DropdownMenu.Trigger>
 
@@ -63,61 +65,49 @@ export function PartySelector() {
           align="end"
           sideOffset={6}
           className={cn(
-            "z-50 min-w-[220px] rounded-xl border border-[var(--border)]",
+            "z-50 w-56 rounded-lg border border-[var(--border)]",
             "bg-[var(--surface)] shadow-float p-1",
             "animate-slide-down"
           )}
         >
-          <div className="px-3 py-2 border-b border-[var(--border)] mb-1">
-            <p className="text-xs text-ink-muted font-medium tracking-wider uppercase">
-              Switch party
-            </p>
-            <p className="text-2xs text-ink-faint mt-0.5">
-              Simulates Canton ledger views
-            </p>
-          </div>
-
-          {roles.map(({ key, label }) => {
-            const roleParties = parties.filter(p => p.role === key)
-            if (!roleParties.length) return null
+          {groups.map(({ key, label }, gi) => {
+            const group = parties.filter(p => p.role === key)
+            if (!group.length) return null
             const Icon = ROLE_ICON[key]
 
             return (
               <div key={key}>
-                <DropdownMenu.Label className="px-3 py-1.5 text-2xs font-semibold text-ink-faint uppercase tracking-wider flex items-center gap-1.5">
+                {gi > 0 && <DropdownMenu.Separator className="my-1 border-t border-[var(--border)]" />}
+
+                <DropdownMenu.Label className="flex items-center gap-1.5 px-2 py-1 text-2xs font-medium text-ink-faint uppercase tracking-wider">
                   <Icon className="w-3 h-3" />
                   {label}
                 </DropdownMenu.Label>
-                {roleParties.map(party => (
+
+                {group.map(party => (
                   <DropdownMenu.Item
                     key={party.id}
                     onSelect={() => setActiveParty(party)}
                     className={cn(
-                      "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm cursor-pointer",
-                      "outline-none transition-colors",
+                      "flex items-center gap-2.5 px-2 py-1.5 rounded-md cursor-pointer",
+                      "outline-none transition-colors select-none text-sm",
                       "hover:bg-muted focus:bg-muted",
                       activeParty.id === party.id && "bg-muted"
                     )}
                   >
-                    <PartyAvatar party={party} />
+                    <Avatar party={party} size="md" />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-ink text-xs truncate">{party.shortName}</p>
+                      <p className="text-xs font-medium text-ink truncate">{party.shortName}</p>
                       <p className="text-2xs text-ink-muted truncate">{party.displayName}</p>
                     </div>
                     {activeParty.id === party.id && (
-                      <Check className="w-3.5 h-3.5 text-primary shrink-0" />
+                      <Check className="w-3.5 h-3.5 text-ink-muted shrink-0" />
                     )}
                   </DropdownMenu.Item>
                 ))}
               </div>
             )
           })}
-
-          <div className="mt-1 px-3 py-2 border-t border-[var(--border)]">
-            <p className="text-2xs text-ink-faint">
-              Privacy is enforced by Canton — not the UI
-            </p>
-          </div>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

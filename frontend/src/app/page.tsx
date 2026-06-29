@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRef, useEffect, useState } from "react"
-import { ArrowRight, Lock, Zap, Shield, Eye, TrendingUp } from "lucide-react"
+import { ArrowRight, Lock, Zap, Shield, Eye, TrendingUp, EyeOff, Unlink, AlertTriangle } from "lucide-react"
 import { ProposalCard } from "@/components/ProposalCard"
 import { ALL_PROPOSALS } from "@/lib/mock-data"
 import { formatCurrency, formatRate } from "@/lib/utils"
@@ -21,7 +21,7 @@ function useScrollY() {
 const FEATURES = [
   {
     title: "Cryptographic offer confidentiality",
-    body: "Competing lenders submit rates without seeing each other's bids. Canton enforces this at the cryptographic layer — NDAs are not required.",
+    body: "Competing lenders submit rates without seeing each other's bids. Canton enforces this at the cryptographic layer. NDAs are not required.",
   },
   {
     title: "Atomic settlement in one transaction",
@@ -132,7 +132,7 @@ export default function LandingPage() {
           <div>
             <div className="inline-flex items-center gap-2 text-xs text-ink-muted border border-[var(--border)] rounded-full px-3 py-1 mb-10">
               <span className="w-1.5 h-1.5 rounded-full bg-success" />
-              Canton Network — Encode Club Hackathon 2024
+              Canton Network · Encode Club Hackathon 2024
             </div>
 
             <h1 className="display-heading text-ink mb-6">
@@ -143,7 +143,7 @@ export default function LandingPage() {
 
             <p className="text-lg text-ink-muted max-w-[480px] leading-relaxed mb-10">
               Institutional-grade loan origination where competing lenders never
-              see each other&apos;s bids. Canton enforces privacy cryptographically —
+              see each other&apos;s bids. Canton enforces privacy cryptographically,
               not contractually.
             </p>
 
@@ -181,6 +181,29 @@ export default function LandingPage() {
           <div className="hidden xl:block">
             <LiveMarketPanel />
           </div>
+        </div>
+      </section>
+
+      {/* ── Market stats ───────────────────────────────────────────── */}
+      <section className="bg-[var(--bg-secondary)] min-h-[60vh] flex items-center">
+        <div className="w-full max-w-[1400px] mx-auto px-6 py-16 grid grid-cols-1 md:grid-cols-3 text-center">
+          {[
+            { value: "$2.1T",    label: "Global private credit AUM"           },
+            { value: "45 days",  label: "Average time to close a private loan" },
+            { value: "$0",       label: "On-chain settlement infrastructure"   },
+          ].map(({ value, label }) => (
+            <div key={label} className="py-10 md:py-0 flex flex-col items-center gap-3">
+              <span
+                className="font-mono font-semibold text-ink leading-none tracking-tighter"
+                style={{ fontSize: "clamp(3.5rem, 7vw, 6rem)" }}
+              >
+                {value}
+              </span>
+              <span className="text-xs text-ink-faint max-w-[160px] leading-relaxed">
+                {label}
+              </span>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -231,12 +254,89 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Pain points ────────────────────────────────────────────── */}
+      <section className="border-t border-[var(--border)] max-w-[1400px] mx-auto px-6 py-14">
+        <p className="text-xs text-ink-faint uppercase tracking-widest mb-8">The problem</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[var(--border)]">
+          {[
+            {
+              icon: EyeOff,
+              label: "Opacity",
+              body: "Lenders bid blind. Borrowers reveal intent before any deal is agreed.",
+            },
+            {
+              icon: Unlink,
+              label: "Fragmentation",
+              body: "Every deal lives in a different email thread, PDF, and Excel model.",
+            },
+            {
+              icon: AlertTriangle,
+              label: "Counterparty Risk",
+              body: "Agreements are off-chain. Settlement is manual and takes days.",
+            },
+          ].map(({ icon: Icon, label, body }) => (
+            <div key={label} className="px-8 py-8 flex flex-col gap-4">
+              <Icon className="w-7 h-7 text-ink" strokeWidth={1.5} />
+              <div>
+                <h3 className="font-semibold text-ink text-base mb-1.5">{label}</h3>
+                <p className="text-sm text-ink-muted leading-relaxed">{body}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Privacy comparison ─────────────────────────────────────── */}
+      <section className="border-t border-[var(--border)] max-w-[1400px] mx-auto px-6 py-16">
+        <p className="text-xs text-ink-faint uppercase tracking-widest mb-10">Privacy that cannot be configured away</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[var(--border)]">
+
+          {/* Left — Other blockchains */}
+          <div className="pb-10 md:pb-0 md:pr-12">
+            <p className="text-2xs font-semibold uppercase tracking-widest text-ink-faint mb-6">Other blockchains</p>
+            <ul className="space-y-5">
+              {[
+                { label: "Public chains",           body: "All data visible to everyone." },
+                { label: "Permissioned Ethereum",   body: "Trust the operator." },
+                { label: "ZK proofs",               body: "Expensive, limited expressiveness." },
+              ].map(({ label, body }) => (
+                <li key={label} className="flex gap-3">
+                  <span className="mt-0.5 w-1 h-1 rounded-full bg-ink-faint shrink-0 translate-y-2" />
+                  <p className="text-sm text-ink-muted leading-relaxed">
+                    <span className="font-medium text-ink-muted">{label}:</span>{" "}{body}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Right — Canton Network */}
+          <div className="pt-10 md:pt-0 md:pl-12">
+            <p className="text-2xs font-semibold uppercase tracking-widest mb-6" style={{ color: "var(--primary)" }}>Canton Network</p>
+            <ul className="space-y-5">
+              {[
+                { body: "Contracts invisible to unauthorised parties — not just access-denied, cryptographically absent." },
+                { body: "Daml enforces visibility at contract level, not application level." },
+                { body: "No trusted intermediary needed." },
+                { body: "Atomic cross-party settlement." },
+              ].map(({ body }) => (
+                <li key={body} className="flex gap-3">
+                  <span className="mt-0.5 w-1 h-1 rounded-full shrink-0 translate-y-2" style={{ backgroundColor: "var(--primary)" }} />
+                  <p className="text-sm text-ink leading-relaxed">{body}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+        </div>
+      </section>
+
       {/* ── Three-column feature strip ──────────────────────────────── */}
       <section className="border-t border-[var(--border)] bg-[var(--bg-secondary)]">
         <div className="max-w-[1400px] mx-auto px-6 py-20 grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[var(--border)]">
           {[
             { icon: Lock,         title: "Offer confidentiality",    body: "Each lender's rate is a Canton contract observed only by the borrower. Zero information leakage between competitors." },
-            { icon: Zap,          title: "Atomic settlement",         body: "Proposal + offer + active loan + collateral lock in a single transaction. Roll back or commit — together." },
+            { icon: Zap,          title: "Atomic settlement",         body: "Proposal + offer + active loan + collateral lock in a single transaction. Roll back or commit together." },
             { icon: Shield,       title: "On-chain compliance trail", body: "Every repayment, default, and collateral event is an immutable Canton record for auditors and regulators." },
           ].map(({ icon: Icon, title, body }) => (
             <div key={title} className="px-8 py-10">

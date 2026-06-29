@@ -31,8 +31,8 @@ export default function LoanDetailPage({ params }: { params: { ref: string } }) 
   const pct = repaymentProgress(l.amountRepaid, l.repaymentSchedule)
   const isBorrower = activeParty.role === "borrower"
 
-  async function handleRepayment(index: number, amount: number) {
-    await makeRepayment(loan!.contractId, index, amount, new Date().toISOString().split("T")[0])
+  async function handleRepayment(entryId: string, amount: number) {
+    await makeRepayment(l.loanRef, entryId, amount, new Date().toISOString().split("T")[0])
     toast.success("Repayment recorded on Canton ledger")
   }
 
@@ -128,7 +128,7 @@ export default function LoanDetailPage({ params }: { params: { ref: string } }) 
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleRepayment(i, entry.totalDue)}
+                            onClick={() => handleRepayment(entry.id ?? String(i), entry.totalDue)}
                             loading={loading}
                           >
                             Pay
