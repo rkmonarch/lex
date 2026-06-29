@@ -11,6 +11,11 @@ import "./globals.css"
 export const metadata: Metadata = {
   title: "Lex: Private Credit Marketplace",
   description: "Institutional-grade confidential private credit on Canton Network",
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+    apple: "/favicon.svg",
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
