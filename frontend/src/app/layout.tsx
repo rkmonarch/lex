@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import type { Metadata } from "next"
 import { Analytics } from "@vercel/analytics/next"
+import { SpeedInsights } from "@vercel/speed-insights/next"
 import { ThemeProvider } from "next-themes"
 import { Navbar } from "@/components/layout/Navbar"
 import { PartyProvider } from "@/context/PartyContext"
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 {children}
               </main>
               <Analytics />
+              <SpeedInsights />
               <Toaster
                 position="bottom-right"
                 toastOptions={{
