@@ -15,16 +15,13 @@
 --     3.  ActiveLoan is created      (signatories: borrower + lender — both present)
 --     4.  CollateralLock is created  (signatories: borrower + lender — both present)
 --   All four steps commit or all four roll back.  No intermediary state is visible.
-module Lex.LoanProposal where
+module LoanProposal where
 
-import Lex.Types
-import Lex.Utils
-import Lex.LoanOffer
-import Lex.ActiveLoan
-import Lex.Collateral
-
-import DA.Date (Date)
-import DA.List (nub, elem)
+import Types
+import Utils
+import LoanOffer
+import ActiveLoan
+import Collateral
 
 -- ---------------------------------------------------------------------------
 -- Loan Proposal
@@ -66,10 +63,10 @@ template LoanProposal
         newLender : Party
       controller borrower
       do
-        assertMsg "Proposal must be open"         (status == "OPEN")
-        assertMsg "Lender already has access"     (newLender `notElem` authorizedLenders)
-        create this with
-          authorizedLenders = nub (newLender :: authorizedLenders)
+        assertMsg "Proposal must be open"     (status == "OPEN")
+        assertMsg "Lender already has access" (newLender `notElem` authorizedLenders)
+        let updated = this with authorizedLenders = newLender :: authorizedLenders
+        create updated
 
     -- | Revoke a lender's visibility (only before they submit an offer).
     choice RemoveAuthorizedLender : ContractId LoanProposal
@@ -77,10 +74,10 @@ template LoanProposal
         targetLender : Party
       controller borrower
       do
-        assertMsg "Proposal must be open"    (status == "OPEN")
+        assertMsg "Proposal must be open"     (status == "OPEN")
         assertMsg "Lender not in access list" (targetLender `elem` authorizedLenders)
-        create this with
-          authorizedLenders = filter (/= targetLender) authorizedLenders
+        let updated = this with authorizedLenders = filter (/= targetLender) authorizedLenders
+        create updated
 
     -- ------------------------------------------------------------------
     -- Lifecycle
