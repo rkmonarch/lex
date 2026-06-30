@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import type { Metadata } from "next"
+import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "next-themes"
 import { Navbar } from "@/components/layout/Navbar"
 import { PartyProvider } from "@/context/PartyContext"
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <main className="pt-14 min-h-screen">
                 {children}
               </main>
+              <Analytics />
               <Toaster
                 position="bottom-right"
                 toastOptions={{
