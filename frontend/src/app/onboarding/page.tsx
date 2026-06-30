@@ -128,7 +128,7 @@ export default function OnboardingPage() {
               disabled={!role}
               onClick={() => setStep("org")}
               className={cn(
-                "btn btn-primary w-full gap-2",
+                "btn-black w-full justify-center",
                 !role && "opacity-40 cursor-not-allowed"
               )}
             >
@@ -179,7 +179,7 @@ export default function OnboardingPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setStep("role")}
-                className="btn btn-secondary flex-1"
+                className="btn-outline flex-1 justify-center"
               >
                 Back
               </button>
@@ -187,14 +187,14 @@ export default function OnboardingPage() {
                 disabled={!orgName.trim() || loading}
                 onClick={handleCreate}
                 className={cn(
-                  "btn btn-primary flex-1 gap-2",
+                  "btn-black flex-1 justify-center",
                   (!orgName.trim() || loading) && "opacity-40 cursor-not-allowed"
                 )}
               >
                 {loading ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Registering...</>
                 ) : (
-                  <>Register<ArrowRight className="w-4 h-4" /></>
+                  <>Register <ArrowRight className="w-4 h-4" /></>
                 )}
               </button>
             </div>
